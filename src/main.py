@@ -1,6 +1,6 @@
 """
 synthetic_data_generator.py
-Generates messy spreadsheets for testing the AI-Powered Spreadsheet Cleaner
+Fixed version - Generates messy spreadsheets for testing the AI-Powered Spreadsheet Cleaner
 """
 
 import pandas as pd
@@ -10,6 +10,7 @@ from faker import Faker
 from datetime import datetime, timedelta
 import openpyxl
 from pathlib import Path
+import os
 
 # Initialize Faker for realistic data
 fake = Faker()
@@ -32,11 +33,13 @@ MESSY_HEADERS = {
     'city': ['City', 'Town', 'CITY', 'municipality', 'city_name'],
     'state': ['State', 'Province', 'STATE', 'region', 'st'],
     'zipcode': ['Zip', 'Postal Code', 'ZIPCODE', 'pin code', 'zip_code'],
-    'product': ['Product Name', 'item', 'PRODUCT', 'merchandise', 'product_name'],
+    'product_name': ['Product Name', 'item', 'PRODUCT', 'merchandise', 'product_name'],
     'quantity': ['Qty', 'Quantity', 'count', 'QTY', 'amount'],
     'price': ['Price ($)', 'cost', 'PRICE', 'unit price', 'price_usd'],
-    'date': ['Date', 'Transaction Date', 'DATE', 'order_date', 'created_at'],
-    'status': ['Status', 'Order Status', 'STATE', 'progress', 'stage']
+    'order_date': ['Date', 'Transaction Date', 'DATE', 'order_date', 'created_at'],
+    'status': ['Status', 'Order Status', 'STATE', 'progress', 'stage'],
+    'sku': ['SKU', 'Item #', 'Product Code', 'SKU #', 'sku_number'],
+    'stock_quantity': ['Stock', 'Inventory', 'Qty on Hand', 'STOCK', 'available']
 }
 
 TYPO_DICTIONARY = {
@@ -45,30 +48,13 @@ TYPO_DICTIONARY = {
     'Chicago': ['Chicage', 'Chigaco', 'Chi-town', 'Chicago', 'Shicago'],
     'Houston': ['Houseton', 'Huston', 'Howston', 'Housten', 'Houson'],
     'Phoenix': ['Pheonix', 'Phonenix', 'Pheonixx', 'Phoenixx', 'Foenix'],
-    'Philadelphia': ['Philidelphia', 'Philly', 'Philadephia', 'Filadelfia'],
-    'San Antonio': ['San Antonio', 'SanAntonio', 'San Antonia', 'SA'],
-    'San Diego': ['San Diego', 'SanDiego', 'San Diago', 'SD'],
-    'Dallas': ['Dallas', 'Dalllas', 'Dallaz', 'Big D'],
-    'Austin': ['Austin', 'Austen', 'Austiin', 'ATX'],
-    
-    # Product typos
     'Laptop': ['Lap top', 'Laptopp', 'Lapotp', 'Notebook'],
     'Mouse': ['Mous', 'Mause', 'Moouse', 'Wireless Mouse'],
     'Keyboard': ['Key Board', 'Keybord', 'Keyboad', 'KB'],
     'Monitor': ['Moniter', 'Monotor', 'LCD', 'Screen'],
     'Headphones': ['Head phones', 'Headpones', 'Headset', 'Earphones'],
-    
-    # Name typos
     'Michael': ['Micheal', 'Michell', 'Michale', 'Mike'],
     'Jennifer': ['Jenifer', 'Jennefer', 'Jenniffer', 'Jenny'],
-    'Christopher': ['Christoper', 'Cristopher', 'Chris', 'Topher'],
-    'Jessica': ['Jesica', 'Jessicca', 'Jessi', 'Jess'],
-    'Daniel': ['Danial', 'Danieal', 'Danny', 'Dan'],
-    
-    # Email domain typos
-    'gmail.com': ['gmail.co', 'gmial.com', 'gmal.com', 'gmail.cm'],
-    'yahoo.com': ['yahho.com', 'yaho.com', 'yhoo.com', 'yahoo.co'],
-    'hotmail.com': ['hotmail.co', 'hotmai.com', 'hotmal.com', 'hotmail.cm']
 }
 
 STATUS_VALUES = ['Pending', 'Shipped', 'Delivered', 'Cancelled', 'Returned']
@@ -107,14 +93,14 @@ def add_missing_values(df, column, missing_probability=0.05):
 def add_duplicates(df, duplicate_count=5):
     """Add duplicate rows"""
     if duplicate_count > 0 and len(df) > duplicate_count:
-        duplicate_indices = np.random.choice(len(df), duplicate_count, replace=False)
+        duplicate_indices = np.random.choice(len(df), min(duplicate_count, len(df)), replace=False)
         duplicates = df.iloc[duplicate_indices].copy()
         # Add slight variations to some columns to make semantic duplicates
         for idx in duplicates.index:
             if 'email' in df.columns:
-                duplicates.loc[idx, 'email'] = add_typos(duplicates.loc[idx, 'email'], 0.5)
+                duplicates.loc[idx, 'email'] = add_typos(str(duplicates.loc[idx, 'email']), 0.5)
             if 'address' in df.columns:
-                duplicates.loc[idx, 'address'] = add_typos(duplicates.loc[idx, 'address'], 0.3)
+                duplicates.loc[idx, 'address'] = add_typos(str(duplicates.loc[idx, 'address']), 0.3)
         df = pd.concat([df, duplicates], ignore_index=True)
     return df
 
@@ -146,8 +132,6 @@ def generate_customer_data(rows=1000):
     # Add messiness
     print("  Adding messiness...")
     
-    # Messy headers (will be applied when saving)
-    
     # Typos in text columns
     for col in ['first_name', 'last_name', 'city', 'state', 'address']:
         df[col] = df[col].apply(lambda x: add_typos(x, 0.15))
@@ -161,8 +145,6 @@ def generate_customer_data(rows=1000):
     
     # Duplicates
     df = add_duplicates(df, duplicate_count=int(rows * 0.05))
-    
-    # Inconsistent date formats (will be mixed when saving)
     
     return df
 
@@ -212,7 +194,7 @@ def generate_sales_data(rows=2000):
     # Typos in customer names
     df['customer_name'] = df['customer_name'].apply(lambda x: add_typos(x, 0.1))
     
-    # Status inconsistencies
+    # Status inconsistencies (keep as strings)
     status_typos = {
         'Pending': ['Pendig', 'Pendng', 'PENDING', 'pendin'],
         'Shipped': ['Shiped', 'Shippd', 'SHIPPED', 'shipd'],
@@ -233,7 +215,7 @@ def generate_sales_data(rows=2000):
     # Duplicates
     df = add_duplicates(df, duplicate_count=int(rows * 0.08))
     
-    # Inconsistent date formats
+    # Mixed date formats (keep as strings for variety)
     df['order_date'] = df['order_date'].apply(
         lambda x: x.strftime(random.choice(['%Y-%m-%d', '%m/%d/%Y', '%d-%b-%Y', '%Y/%m/%d']))
         if random.random() < 0.3 else x
@@ -242,7 +224,7 @@ def generate_sales_data(rows=2000):
     return df
 
 def generate_product_inventory(rows=500):
-    """Generate product inventory dataset"""
+    """Generate product inventory dataset - FIXED VERSION"""
     print(f"Generating {rows} rows of inventory data...")
     
     product_prefixes = ['Pro', 'Ultra', 'Basic', 'Premium', 'Eco', 'Smart', 'Max', 'Lite']
@@ -254,15 +236,18 @@ def generate_product_inventory(rows=500):
         suffix = random.choice(product_suffixes)
         product_name = f"{prefix} {fake.word().capitalize()} {suffix}"
         
+        # Keep price as float initially
+        price = round(random.uniform(10, 1000), 2)
+        
         data.append({
-            'SKU': f"SKU-{fake.random_number(digits=5)}",
-            'Product Name': product_name,
-            'Description': fake.sentence(),
-            'Price': round(random.uniform(10, 1000), 2),
-            'Stock Quantity': random.randint(0, 500),
-            'Supplier': fake.company(),
-            'Last Restocked': fake.date_between(start_date='-90d', end_date='today'),
-            'Warehouse Location': random.choice(['A1', 'B2', 'C3', 'D4', 'E5', 'F6'])
+            'sku': f"SKU-{fake.random_number(digits=5)}",
+            'product_name': product_name,
+            'description': fake.sentence(),
+            'price': price,  # Store as float
+            'stock_quantity': random.randint(0, 500),
+            'supplier': fake.company(),
+            'last_restocked': fake.date_between(start_date='-90d', end_date='today'),
+            'warehouse_location': random.choice(['A1', 'B2', 'C3', 'D4', 'E5', 'F6'])
         })
     
     df = pd.DataFrame(data)
@@ -271,26 +256,40 @@ def generate_product_inventory(rows=500):
     print("  Adding messiness...")
     
     # SKU duplicates
-    duplicate_skus = np.random.choice(df['SKU'].tolist(), size=int(rows * 0.03), replace=False)
+    duplicate_skus = np.random.choice(df['sku'].tolist(), size=int(rows * 0.03), replace=False)
     for sku in duplicate_skus:
-        duplicate_row = df[df['SKU'] == sku].iloc[0].copy()
-        duplicate_row['Stock Quantity'] = duplicate_row['Stock Quantity'] + random.randint(-50, 50)
+        duplicate_row = df[df['sku'] == sku].iloc[0].copy()
+        duplicate_row['stock_quantity'] = duplicate_row['stock_quantity'] + random.randint(-50, 50)
         df = pd.concat([df, pd.DataFrame([duplicate_row])], ignore_index=True)
     
-    # Price with wrong format (strings with $)
-    price_mask = np.random.random(len(df)) < 0.1
-    df.loc[price_mask, 'Price'] = df.loc[price_mask, 'Price'].apply(
-        lambda x: f"${x}" if random.random() < 0.5 else f"{x} USD"
-    )
-    
     # Missing values
-    df = add_missing_values(df, 'Description', 0.06)
-    df = add_missing_values(df, 'Supplier', 0.04)
+    df = add_missing_values(df, 'description', 0.06)
+    df = add_missing_values(df, 'supplier', 0.04)
     
     # Typos in product names
-    df['Product Name'] = df['Product Name'].apply(lambda x: add_typos(x, 0.1))
+    df['product_name'] = df['product_name'].apply(lambda x: add_typos(x, 0.1))
+    
+    # For string columns, ensure they're strings
+    df['supplier'] = df['supplier'].astype(str)
+    df['description'] = df['description'].astype(str)
     
     return df
+
+def generate_mixed_price_column(df):
+    """Convert price column to mixed strings/numbers for testing - SEPARATE FUNCTION"""
+    # Create a copy to avoid modifying original
+    df_with_mixed_prices = df.copy()
+    
+    # Convert price to string for some rows
+    price_mask = np.random.random(len(df_with_mixed_prices)) < 0.15
+    for idx in df_with_mixed_prices[price_mask].index:
+        price_val = df_with_mixed_prices.loc[idx, 'price']
+        if random.random() < 0.5:
+            df_with_mixed_prices.loc[idx, 'price'] = f"${price_val}"
+        else:
+            df_with_mixed_prices.loc[idx, 'price'] = f"{price_val} USD"
+    
+    return df_with_mixed_prices
 
 # ============================================
 # SAVE FUNCTIONS WITH MESSY HEADERS
@@ -302,19 +301,49 @@ def apply_messy_headers(df, messiness_level='medium'):
     header_mapping = {}
     
     for clean_col in messy_df.columns:
-        if clean_col in MESSY_HEADERS:
-            if messiness_level == 'high':
-                # Use random messy header
-                new_header = random.choice(MESSY_HEADERS[clean_col])
-            elif messiness_level == 'medium':
-                # Use first messy header
-                new_header = MESSY_HEADERS[clean_col][0]
-            else:
-                new_header = clean_col
-            header_mapping[clean_col] = new_header
+        # Find matching messy header
+        matched = False
+        for key, messy_options in MESSY_HEADERS.items():
+            if key in clean_col or clean_col in key:
+                if messiness_level == 'high':
+                    new_header = random.choice(messy_options)
+                elif messiness_level == 'medium':
+                    new_header = messy_options[0]
+                else:
+                    new_header = clean_col
+                header_mapping[clean_col] = new_header
+                matched = True
+                break
+        
+        if not matched:
+            header_mapping[clean_col] = clean_col
     
     messy_df.columns = [header_mapping.get(col, col) for col in messy_df.columns]
     return messy_df
+
+def safe_save_csv(df, filename):
+    """Safely save CSV handling mixed types"""
+    try:
+        df.to_csv(filename, index=False)
+        return True
+    except Exception as e:
+        print(f"    Warning: CSV save issue: {e}")
+        # Try converting all to string
+        df_str = df.astype(str)
+        df_str.to_csv(filename, index=False)
+        return False
+
+def safe_save_excel(df, filename):
+    """Safely save Excel handling mixed types"""
+    try:
+        df.to_excel(filename, index=False, engine='openpyxl')
+        return True
+    except Exception as e:
+        print(f"    Warning: Excel save issue: {e}")
+        # Try converting to string and saving
+        df_str = df.astype(str)
+        df_str.to_excel(filename, index=False, engine='openpyxl')
+        return False
 
 def save_with_mixed_formats(df, base_filename, formats=['csv', 'xlsx']):
     """Save dataset in multiple formats with different issues"""
@@ -322,46 +351,47 @@ def save_with_mixed_formats(df, base_filename, formats=['csv', 'xlsx']):
     
     for format_type in formats:
         if format_type == 'csv':
+            # CSV with messy headers
             filename = f"{base_filename}_messy.csv"
-            # CSV with mixed header styles
             messy_df = apply_messy_headers(df, 'medium')
-            messy_df.to_csv(filename, index=False)
+            safe_save_csv(messy_df, filename)
             saved_files.append(filename)
             
-            # Also save clean version for comparison
+            # Clean version for comparison
             clean_filename = f"{base_filename}_clean.csv"
-            df.to_csv(clean_filename, index=False)
+            safe_save_csv(df, clean_filename)
             saved_files.append(clean_filename)
             
         elif format_type == 'xlsx':
             filename = f"{base_filename}_messy.xlsx"
             messy_df = apply_messy_headers(df, 'high')
             
-            # Create Excel with multiple sheets for extra messiness
-            with pd.ExcelWriter(filename, engine='openpyxl') as writer:
-                # Main data sheet with messy headers
-                messy_df.to_excel(writer, sheet_name='Data', index=False)
-                
-                # Add a "notes" sheet with metadata
-                notes_df = pd.DataFrame({
-                    'Note': ['This file has intentional issues for testing:',
-                            '- Messy headers',
-                            '- Typos in text fields',
-                            '- Missing values',
-                            '- Duplicate rows',
-                            '- Mixed date formats']
-                })
-                notes_df.to_excel(writer, sheet_name='README', index=False)
-                
-                # Add a summary sheet with wrong name
-                summary_df = messy_df.describe()
-                summary_df.to_excel(writer, sheet_name='Stats (maybe wrong)', index=True)
-            
-            saved_files.append(filename)
+            try:
+                with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+                    # Main data sheet with messy headers
+                    messy_df.to_excel(writer, sheet_name='Data', index=False)
+                    
+                    # Add notes sheet (always strings)
+                    notes_df = pd.DataFrame({
+                        'Note': ['This file has intentional issues for testing:',
+                                '- Messy headers',
+                                '- Typos in text fields',
+                                '- Missing values',
+                                '- Duplicate rows',
+                                '- Mixed data types']
+                    })
+                    notes_df.to_excel(writer, sheet_name='README', index=False)
+                    
+                saved_files.append(filename)
+            except Exception as e:
+                print(f"    Error saving Excel: {e}")
+                # Fallback to simple save
+                safe_save_excel(messy_df, filename)
+                saved_files.append(filename)
             
             # Save clean version
             clean_filename = f"{base_filename}_clean.xlsx"
-            df.to_excel(clean_filename, index=False)
+            safe_save_excel(df, clean_filename)
             saved_files.append(clean_filename)
     
     return saved_files
@@ -380,80 +410,120 @@ def generate_all_datasets():
     # Create output directory
     output_dir = Path("test_datasets")
     output_dir.mkdir(exist_ok=True)
+    
+    # Save current directory and change to output dir
+    original_dir = os.getcwd()
     os.chdir(output_dir)
     
     all_files = []
     
-    # 1. Customer Dataset (small, medium, large)
-    print("\n📊 1. CUSTOMER DATASETS")
-    for size, rows in [('small', 100), ('medium', 500), ('large', 2000)]:
-        print(f"\n  Generating {size} customer dataset ({rows} rows)...")
-        df = generate_customer_data(rows)
-        files = save_with_mixed_formats(df, f"customers_{size}")
+    try:
+        # 1. Customer Dataset (small, medium, large)
+        print("\n📊 1. CUSTOMER DATASETS")
+        for size, rows in [('small', 100), ('medium', 500), ('large', 2000)]:
+            print(f"\n  Generating {size} customer dataset ({rows} rows)...")
+            df = generate_customer_data(rows)
+            files = save_with_mixed_formats(df, f"customers_{size}")
+            all_files.extend(files)
+            print(f"    ✓ Saved {len(files)} files")
+        
+        # 2. Sales Dataset
+        print("\n💰 2. SALES DATASETS")
+        for size, rows in [('small', 200), ('medium', 1000), ('large', 3000)]:
+            print(f"\n  Generating {size} sales dataset ({rows} rows)...")
+            df = generate_sales_data(rows)
+            files = save_with_mixed_formats(df, f"sales_{size}")
+            all_files.extend(files)
+            print(f"    ✓ Saved {len(files)} files")
+        
+        # 3. Product Inventory (with mixed price column as separate version)
+        print("\n📦 3. PRODUCT INVENTORY")
+        print("  Generating base inventory...")
+        df = generate_product_inventory(500)
+        
+        # Save base version
+        files = save_with_mixed_formats(df, "inventory_base")
         all_files.extend(files)
-        print(f"    ✓ Saved {len(files)} files")
-    
-    # 2. Sales Dataset
-    print("\n💰 2. SALES DATASETS")
-    for size, rows in [('small', 200), ('medium', 1000), ('large', 3000)]:
-        print(f"\n  Generating {size} sales dataset ({rows} rows)...")
-        df = generate_sales_data(rows)
-        files = save_with_mixed_formats(df, f"sales_{size}")
+        print(f"    ✓ Saved base version ({len(files)} files)")
+        
+        # Create version with mixed price formats
+        print("  Generating inventory with mixed price formats...")
+        df_mixed_price = generate_mixed_price_column(df)
+        files = save_with_mixed_formats(df_mixed_price, "inventory_mixed_prices")
         all_files.extend(files)
-        print(f"    ✓ Saved {len(files)} files")
-    
-    # 3. Product Inventory
-    print("\n📦 3. PRODUCT INVENTORY")
-    df = generate_product_inventory(500)
-    files = save_with_mixed_formats(df, "inventory")
-    all_files.extend(files)
-    print(f"  ✓ Saved {len(files)} files")
-    
-    # 4. Special edge case datasets
-    print("\n🔬 4. EDGE CASE DATASETS")
-    
-    # Empty rows dataset
-    print("  Generating dataset with empty rows...")
-    empty_df = generate_customer_data(100)
-    empty_indices = np.random.choice(len(empty_df), 10, replace=False)
-    empty_df.iloc[empty_indices] = np.nan
-    empty_df.to_csv("edge_case_empty_rows.csv", index=False)
-    empty_df.to_excel("edge_case_empty_rows.xlsx", index=False)
-    all_files.extend(["edge_case_empty_rows.csv", "edge_case_empty_rows.xlsx"])
-    
-    # All caps headers
-    print("  Generating dataset with all caps headers...")
-    caps_df = generate_customer_data(50)
-    caps_df.columns = [col.upper() for col in caps_df.columns]
-    caps_df.to_csv("edge_case_all_caps_headers.csv", index=False)
-    caps_df.to_excel("edge_case_all_caps_headers.xlsx", index=False)
-    all_files.extend(["edge_case_all_caps_headers.csv", "edge_case_all_caps_headers.xlsx"])
-    
-    # Special characters in headers
-    print("  Generating dataset with special characters...")
-    special_df = generate_customer_data(50)
-    special_df.columns = [f"{col} #$%" for col in special_df.columns]
-    special_df.to_csv("edge_case_special_chars.csv", index=False)
-    special_df.to_excel("edge_case_special_chars.xlsx", index=False)
-    all_files.extend(["edge_case_special_chars.csv", "edge_case_special_chars.xlsx"])
-    
-    # Summary
-    print("\n" + "="*60)
-    print("✅ GENERATION COMPLETE!")
-    print(f"   Created {len(all_files)} test files in '{output_dir}/'")
-    print("\n📁 Files created:")
-    for f in sorted(all_files):
-        print(f"   • {f}")
-    
-    print("\n🚀 Next steps:")
-    print("   1. Test the cleaner on small files first:")
-    print("      python ../cleaner.py clean customers_small_messy.csv")
-    print("\n   2. Compare with clean versions:")
-    print("      diff customers_small_clean.csv customers_small_messy.csv")
-    print("\n   3. Try different models:")
-    print("      python ../cleaner.py clean sales_medium_messy.xlsx --model llama3.2:3b")
-    
-    print("\n" + "="*60)
+        print(f"    ✓ Saved mixed price version ({len(files)} files)")
+        
+        # 4. Special edge case datasets
+        print("\n🔬 4. EDGE CASE DATASETS")
+        
+        # Empty rows dataset
+        print("  Generating dataset with empty rows...")
+        empty_df = generate_customer_data(100)
+        empty_indices = np.random.choice(len(empty_df), 10, replace=False)
+        for idx in empty_indices:
+            empty_df.iloc[idx] = np.nan
+        safe_save_csv(empty_df, "edge_case_empty_rows.csv")
+        safe_save_excel(empty_df, "edge_case_empty_rows.xlsx")
+        all_files.extend(["edge_case_empty_rows.csv", "edge_case_empty_rows.xlsx"])
+        print("    ✓ Saved empty rows datasets")
+        
+        # All caps headers
+        print("  Generating dataset with all caps headers...")
+        caps_df = generate_customer_data(50)
+        caps_df.columns = [col.upper() for col in caps_df.columns]
+        safe_save_csv(caps_df, "edge_case_all_caps_headers.csv")
+        safe_save_excel(caps_df, "edge_case_all_caps_headers.xlsx")
+        all_files.extend(["edge_case_all_caps_headers.csv", "edge_case_all_caps_headers.xlsx"])
+        print("    ✓ Saved all caps headers datasets")
+        
+        # Special characters in headers
+        print("  Generating dataset with special characters...")
+        special_df = generate_customer_data(50)
+        special_df.columns = [f"{col}#$%" for col in special_df.columns]
+        safe_save_csv(special_df, "edge_case_special_chars.csv")
+        safe_save_excel(special_df, "edge_case_special_chars.xlsx")
+        all_files.extend(["edge_case_special_chars.csv", "edge_case_special_chars.xlsx"])
+        print("    ✓ Saved special characters datasets")
+        
+        # Duplicate heavy dataset
+        print("  Generating dataset with many duplicates...")
+        dup_df = generate_customer_data(200)
+        dup_df = add_duplicates(dup_df, duplicate_count=50)
+        safe_save_csv(dup_df, "edge_case_many_duplicates.csv")
+        safe_save_excel(dup_df, "edge_case_many_duplicates.xlsx")
+        all_files.extend(["edge_case_many_duplicates.csv", "edge_case_many_duplicates.xlsx"])
+        print("    ✓ Saved many duplicates datasets")
+        
+        # Summary
+        print("\n" + "="*60)
+        print("✅ GENERATION COMPLETE!")
+        print(f"   Created {len(all_files)} test files in 'test_datasets/'")
+        print("\n📁 Files created:")
+        for f in sorted(all_files)[:20]:  # Show first 20
+            file_size = Path(f).stat().st_size if Path(f).exists() else 0
+            print(f"   • {f} ({file_size:,} bytes)")
+        if len(all_files) > 20:
+            print(f"   ... and {len(all_files) - 20} more files")
+        
+        print("\n🚀 Next steps:")
+        print("   1. Test the cleaner on small files first:")
+        print("      python ../cleaner.py clean customers_small_messy.csv")
+        print("\n   2. Compare with clean versions:")
+        print("      diff customers_small_clean.csv customers_small_messy.csv")
+        print("\n   3. Test mixed price formats:")
+        print("      python ../cleaner.py clean inventory_mixed_prices_messy.xlsx")
+        print("\n   4. Try edge cases:")
+        print("      python ../cleaner.py clean edge_case_all_caps_headers.csv --fix-typos True")
+        
+        print("\n" + "="*60)
+        
+    except Exception as e:
+        print(f"\n❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        # Change back to original directory
+        os.chdir(original_dir)
     
     return all_files
 
@@ -462,11 +532,16 @@ def generate_all_datasets():
 # ============================================
 
 if __name__ == "__main__":
-    import os
-    
     try:
+        # Check if required packages are installed
+        import faker
+        import openpyxl
         generate_all_datasets()
-    except Exception as e:
-        print(f"\n❌ Error generating datasets: {e}")
-        print("\nMake sure you have installed required packages:")
+    except ImportError as e:
+        print(f"\n❌ Missing required package: {e}")
+        print("\nPlease install required packages:")
         print("pip install faker pandas numpy openpyxl")
+    except Exception as e:
+        print(f"\n❌ Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
